@@ -2,7 +2,7 @@ import json
 import re
 
 # noinspection PyPackageRequirements
-from atlasclient.exceptions import Conflict
+import atlasclient.exceptions as aexp
 from requests import Timeout
 
 from amundsenatlastypes.client import driver
@@ -13,21 +13,25 @@ from .types_def import *
 class Initializer:
     def assign_subtypes(self, regex, super_type):
         print(f'\nAssigning {super_type} entity to all the subtypes entity definitions with postfix ')
-        entities_to_update = []
         for t in driver.typedefs:
             for e in t.entityDefs:
                 if re.compile(regex).match(e.name) is not None:
-                    print(f'Assigning {e.name} as a subtype of {super_type}')
                     super_types = e.superTypes  # Get a property first to inflate the relational objects
                     ent_dict = e._data
                     ent_dict["superTypes"] = super_types
                     ent_dict["superTypes"].append(super_type)
-                    entities_to_update.append(ent_dict)
 
-        typedef_dict = {
-            "entityDefs": entities_to_update
-        }
-        driver.typedefs.update(data=typedef_dict)
+                    # Update the meta data store
+                    typedef_dict = {
+                        "entityDefs":  [ent_dict]
+                    }
+                    try:
+                        driver.typedefs.update(data=typedef_dict)
+                    except aexp.BadRequest as err:
+                        print(f'Assigned {e.name} as a subtype of {super_type}: Error')
+                    else:    
+                        print(f'Assigned {e.name} as a subtype of {super_type}: Success')
+
         print(f'Assignment of "{super_type}" Entity to existing "{regex}" entities Completed.\n')
 
     def create_or_update(self, typedef_dict, info, attempt=1):
@@ -35,7 +39,7 @@ class Initializer:
             print(f"Trying to create {info} Entity")
             driver.typedefs.create(data=typedef_dict)
 
-        except Conflict:
+        except aexp.Conflict:
             print(f"Already Exists, updating {info} Entity")
             try:
                 driver.typedefs.update(data=typedef_dict)
